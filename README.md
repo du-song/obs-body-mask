@@ -10,7 +10,8 @@ offers three output modes:
    an **image** or **solid color**, with a slider for the **% of the original**
    to blend back through.
 3. **Head Text Overlay** — draws an auto-numbered label (`Person 1`, `Person 2`,
-   …) on each detected head, using a multi-person **pose** model.
+   …) on each detected head, using a multi-person **pose** model (YOLO26-pose by
+   default; the older YOLOv8/11 `[1,56,8400]` layout is also supported).
 
 Designed for the hard cases: it works for **back-facing** people (segmentation
 is silhouette-based and head detection uses pose keypoints, not faces) and for
@@ -48,7 +49,7 @@ cmake --build build
 ./build/body-mask-cli --mode mask       --input people.jpg --output mask.png       --model data/models/selfie_segmentation.onnx
 ./build/body-mask-cli --mode background  --input people.jpg --bg-color FF0000 --original-blend 20 --output bg.png --model data/models/selfie_segmentation.onnx
 ./build/body-mask-cli --mode overlay     --input people.jpg --output labels.png \
-    --pose-model data/models/yolo11n-pose.onnx --font data/fonts/overlay.ttf
+    --pose-model data/models/yolo26n-pose.onnx --font data/fonts/overlay.ttf
 ```
 
 ### 2b. OBS plugin (macOS, Apple Silicon)

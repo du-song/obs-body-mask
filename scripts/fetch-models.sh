@@ -13,12 +13,27 @@ echo "==> MediaPipe Selfie Segmentation"
 curl -fSL -o "$models/selfie_segmentation.onnx" \
   "https://huggingface.co/onnx-community/mediapipe_selfie_segmentation/resolve/main/onnx/model.onnx"
 
-echo "==> Multi-person pose model (YOLO-pose, [1,56,8400] output)"
-# Prefer YOLO11n-pose; fall back to the format-compatible YOLOv8n-pose.
-if ! curl -fSL -o "$models/yolo11n-pose.onnx" \
-      "https://huggingface.co/onnx-community/yolo11n-pose/resolve/main/onnx/model.onnx" 2>/dev/null; then
-  echo "    yolo11n-pose not found, using format-compatible yolov8n-pose"
-  curl -fSL -o "$models/yolo11n-pose.onnx" \
+echo "==> Multi-person pose model (YOLO26n-pose, NMS-free [1,300,57] output)"
+# YOLO26 ships .pt only, so export to ONNX via ultralytics. The PoseDetector
+# also accepts the older [1,56,8400] YOLOv8/11 layout, so if export is not
+# possible we fall back to the format-compatible YOLOv8n-pose ONNX.
+if python3 - "$models" <<'PY'
+import sys
+try:
+    from ultralytics import YOLO
+except Exception:
+    sys.exit(3)
+m = YOLO("yolo26n-pose.pt")  # auto-downloads weights
+p = m.export(format="onnx", opset=17, imgsz=640, dynamic=False, simplify=True)
+import shutil, os
+shutil.move(p, os.path.join(sys.argv[1], "yolo26n-pose.onnx"))
+print("exported", p)
+PY
+then
+  echo "    exported yolo26n-pose.onnx"
+else
+  echo "    ultralytics not available; using format-compatible yolov8n-pose"
+  curl -fSL -o "$models/yolo26n-pose.onnx" \
     "https://huggingface.co/Xenova/yolov8n-pose/resolve/main/onnx/model.onnx"
 fi
 

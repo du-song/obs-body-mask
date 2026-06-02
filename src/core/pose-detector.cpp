@@ -80,27 +80,44 @@ std::vector<Detection> PoseDetector::detect(const Image &img, const PoseConfig &
 		return result;
 	}
 
-	// Output is [1, 56, N] (channels-first) for YOLO11-pose: rows are
-	// cx,cy,w,h,conf, then 17*(x,y,conf). Some exports give [1, N, 56].
+	// Two output layouts are supported, distinguished by feature width:
+	//   * feat == 57  -> YOLO26 (NMS-free, end-to-end): per detection
+	//       [x0,y0,x1,y1, conf, cls, 17*(x,y,conf)], already filtered and
+	//       sorted by confidence. Boxes are xyxy. No NMS needed.
+	//   * feat == 56  -> YOLOv8/YOLO11: per anchor
+	//       [cx,cy,w,h, conf, 17*(x,y,conf)] over a dense grid. Boxes are
+	//       cxcywh and the candidates require NMS.
+	// Either layout may be channels-first ([1,feat,N]) or anchors-first
+	// ([1,N,feat]).
 	auto os = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
 	const float *d = outputs[0].GetTensorData<float>();
-	int ch, n;
-	bool chFirst;
-	if (os.size() == 3 && os[1] == 56) {
-		chFirst = true;
-		ch = (int)os[1];
-		n = (int)os[2];
-	} else if (os.size() == 3 && os[2] == 56) {
-		chFirst = false;
-		n = (int)os[1];
-		ch = (int)os[2];
-	} else {
-		fprintf(stderr, "[obs-body-mask] unexpected pose output rank/shape\n");
+	if (os.size() != 3) {
+		fprintf(stderr, "[obs-body-mask] unexpected pose output rank\n");
 		return result;
 	}
-	(void)ch;
-	auto at = [&](int row, int i) -> float {
-		return chFirst ? d[(size_t)row * n + i] : d[(size_t)i * 56 + row];
+	int feat = 0, n = 0;
+	bool chFirst = false;
+	for (int F : {57, 56}) {
+		if (os[1] == F) {
+			chFirst = true;
+			feat = F;
+			n = (int)os[2];
+			break;
+		} else if (os[2] == F) {
+			chFirst = false;
+			feat = F;
+			n = (int)os[1];
+			break;
+		}
+	}
+	if (feat == 0) {
+		fprintf(stderr, "[obs-body-mask] unexpected pose output shape\n");
+		return result;
+	}
+	const bool nmsFree = (feat == 57); // YOLO26 end-to-end
+	const int kptStart = nmsFree ? 6 : 5;
+	auto at = [&](int f, int i) -> float {
+		return chFirst ? d[(size_t)f * n + i] : d[(size_t)i * feat + f];
 	};
 
 	std::vector<Detection> cand;
@@ -108,33 +125,42 @@ std::vector<Detection> PoseDetector::detect(const Image &img, const PoseConfig &
 		float conf = at(4, i);
 		if (conf < cfg.confThreshold)
 			continue;
-		float cx = at(0, i), cy = at(1, i), w = at(2, i), h = at(3, i);
 		Detection det;
-		// undo letterbox: subtract pad, divide by scale
-		det.x0 = (cx - w / 2 - padX) / scale;
-		det.y0 = (cy - h / 2 - padY) / scale;
-		det.x1 = (cx + w / 2 - padX) / scale;
-		det.y1 = (cy + h / 2 - padY) / scale;
+		if (nmsFree) { // xyxy in input space
+			det.x0 = (at(0, i) - padX) / scale;
+			det.y0 = (at(1, i) - padY) / scale;
+			det.x1 = (at(2, i) - padX) / scale;
+			det.y1 = (at(3, i) - padY) / scale;
+		} else { // cxcywh
+			float cx = at(0, i), cy = at(1, i), w = at(2, i), h = at(3, i);
+			det.x0 = (cx - w / 2 - padX) / scale;
+			det.y0 = (cy - h / 2 - padY) / scale;
+			det.x1 = (cx + w / 2 - padX) / scale;
+			det.y1 = (cy + h / 2 - padY) / scale;
+		}
 		det.score = conf;
 		for (int k = 0; k < 17; ++k) {
-			det.kpts[k].x = (at(5 + k * 3, i) - padX) / scale;
-			det.kpts[k].y = (at(6 + k * 3, i) - padY) / scale;
-			det.kpts[k].conf = at(7 + k * 3, i);
+			det.kpts[k].x = (at(kptStart + k * 3, i) - padX) / scale;
+			det.kpts[k].y = (at(kptStart + k * 3 + 1, i) - padY) / scale;
+			det.kpts[k].conf = at(kptStart + k * 3 + 2, i);
 		}
 		cand.push_back(det);
 	}
 
-	// NMS
 	std::sort(cand.begin(), cand.end(),
 		  [](const Detection &a, const Detection &b) { return a.score > b.score; });
-	std::vector<bool> removed(cand.size(), false);
-	for (size_t i = 0; i < cand.size(); ++i) {
-		if (removed[i])
-			continue;
-		result.push_back(cand[i]);
-		for (size_t j = i + 1; j < cand.size(); ++j)
-			if (!removed[j] && iou(cand[i], cand[j]) > cfg.iouThreshold)
-				removed[j] = true;
+	if (nmsFree) {
+		result = std::move(cand); // already deduplicated by the model
+	} else {
+		std::vector<bool> removed(cand.size(), false);
+		for (size_t i = 0; i < cand.size(); ++i) {
+			if (removed[i])
+				continue;
+			result.push_back(cand[i]);
+			for (size_t j = i + 1; j < cand.size(); ++j)
+				if (!removed[j] && iou(cand[i], cand[j]) > cfg.iouThreshold)
+					removed[j] = true;
+		}
 	}
 
 	// Head anchor: confidence-weighted mean of head keypoints (nose, eyes,

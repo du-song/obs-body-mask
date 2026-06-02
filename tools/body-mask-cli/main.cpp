@@ -42,7 +42,7 @@ static void usage()
 		"  --bg-image FILE       background image (background mode)\n"
 		"  --bg-color RRGGBB     solid background color (background mode)\n"
 		"  --original-blend 0..100  %% of original kept (default 0)\n"
-		"  --pose-model FILE     pose onnx (default models/yolo11n-pose.onnx)\n"
+		"  --pose-model FILE     pose onnx (default models/yolo26n-pose.onnx)\n"
 		"  --font FILE           ttf for labels (default fonts/overlay.ttf)\n"
 		"  --font-size N         label pixel height (default 28)\n"
 		"  --backend cpu|coreml  (default cpu)\n");
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 	}
 
 	if (mode == "overlay") {
-		PoseDetector pose(env, get("pose-model", "models/yolo11n-pose.onnx"), backend);
+		PoseDetector pose(env, get("pose-model", "models/yolo26n-pose.onnx"), backend);
 		if (!pose.ok())
 			return 1;
 		PoseConfig pc;

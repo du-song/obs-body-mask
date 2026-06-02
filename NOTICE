@@ -14,9 +14,9 @@ Third-party components:
 - stb_image.h, stb_image_write.h, stb_truetype.h — public domain / MIT
   (Sean Barrett). Vendored under src/third_party/.
 - MediaPipe Selfie Segmentation model — Apache-2.0 (Google).
-- YOLO11 / YOLOv8 pose model — AGPL-3.0 (Ultralytics). If you redistribute a
-  build that bundles this model, your obligations under AGPL-3.0 apply; swap in
-  a permissively-licensed pose model to avoid them.
+- YOLO26 / YOLO11 / YOLOv8 pose model — AGPL-3.0 (Ultralytics). If you
+  redistribute a build that bundles this model, your obligations under AGPL-3.0
+  apply; swap in a permissively-licensed pose model to avoid them.
 - Label font — license per the .ttf you bundle in data/fonts/.
 
 Models and fonts are downloaded by scripts/fetch-models.sh and are not part of

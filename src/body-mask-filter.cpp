@@ -243,7 +243,7 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_int(s, S_BG_COLOR, 0xff00ff00);
 	obs_data_set_default_double(s, S_ORIG_BLEND, 0.0);
 	obs_data_set_default_bool(s, S_OVERLAY, false);
-	obs_data_set_default_string(s, S_POSE_MODEL, "yolo11n-pose.onnx");
+	obs_data_set_default_string(s, S_POSE_MODEL, "yolo26n-pose.onnx");
 	obs_data_set_default_double(s, S_POSE_CONF, 0.25);
 	obs_data_set_default_int(s, S_FONT_SIZE, 28);
 	obs_data_set_default_int(s, S_TEXT_COLOR, 0xff00e6ff);
@@ -314,6 +314,7 @@ obs_properties_t *getProperties(void *)
 							obs_module_text("BodyMask.PoseModel"),
 							OBS_COMBO_TYPE_LIST,
 							OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(posem, "YOLO26n-pose (NMS-free)", "yolo26n-pose.onnx");
 	obs_property_list_add_string(posem, "YOLO11n-pose", "yolo11n-pose.onnx");
 	obs_properties_add_float_slider(p, S_POSE_CONF, obs_module_text("BodyMask.PoseConf"), 0.05,
 					0.9, 0.01);
