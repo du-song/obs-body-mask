@@ -40,6 +40,8 @@
 #define S_FONT_SIZE "font_size"
 #define S_TEXT_COLOR "text_color"
 #define S_VOFFSET "v_offset"
+#define S_TRACK_IOU "track_iou"
+#define S_TRACK_MISS "track_miss"
 #define S_BACKEND "backend"
 #define S_RUN_EVERY "run_every"
 
@@ -88,6 +90,8 @@ struct BodyMaskFilter {
 	int fontSize = 28;
 	uint32_t textColor = 0xff00e6ff;
 	int vOffset = 6;
+	float trackIou = 0.3f; // min IoU to keep a Person ID across frames
+	int trackMiss = 15;    // frames a track survives without a detection
 	Backend backend = Backend::CoreML;
 	int runEvery = 1;
 
@@ -185,6 +189,8 @@ void updateSettings(void *data, obs_data_t *s)
 	f->fontSize = (int)obs_data_get_int(s, S_FONT_SIZE);
 	f->textColor = (uint32_t)obs_data_get_int(s, S_TEXT_COLOR);
 	f->vOffset = (int)obs_data_get_int(s, S_VOFFSET);
+	f->trackIou = (float)obs_data_get_double(s, S_TRACK_IOU);
+	f->trackMiss = (int)obs_data_get_int(s, S_TRACK_MISS);
 	f->backend = newBackend;
 	f->runEvery = (int)obs_data_get_int(s, S_RUN_EVERY);
 
@@ -250,6 +256,8 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_int(s, S_FONT_SIZE, 28);
 	obs_data_set_default_int(s, S_TEXT_COLOR, 0xff00e6ff);
 	obs_data_set_default_int(s, S_VOFFSET, 6);
+	obs_data_set_default_double(s, S_TRACK_IOU, 0.3);
+	obs_data_set_default_int(s, S_TRACK_MISS, 15);
 	obs_data_set_default_string(s, S_BACKEND, "coreml");
 	obs_data_set_default_int(s, S_RUN_EVERY, 1);
 }
@@ -266,7 +274,8 @@ bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 bool overlayChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 {
 	bool on = obs_data_get_bool(s, S_OVERLAY);
-	for (const char *k : {S_POSE_MODEL, S_POSE_CONF, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET})
+	for (const char *k : {S_POSE_MODEL, S_POSE_CONF, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET,
+			      S_TRACK_IOU, S_TRACK_MISS})
 		obs_property_set_visible(obs_properties_get(props, k), on);
 	return true;
 }
@@ -324,6 +333,10 @@ obs_properties_t *getProperties(void *)
 				      1);
 	obs_properties_add_color(p, S_TEXT_COLOR, obs_module_text("BodyMask.TextColor"));
 	obs_properties_add_int_slider(p, S_VOFFSET, obs_module_text("BodyMask.VOffset"), 0, 200, 1);
+	obs_properties_add_float_slider(p, S_TRACK_IOU, obs_module_text("BodyMask.TrackIou"), 0.1,
+					0.9, 0.01);
+	obs_properties_add_int_slider(p, S_TRACK_MISS, obs_module_text("BodyMask.TrackMiss"), 0, 60,
+				      1);
 
 	obs_property_t *be = obs_properties_add_list(p, S_BACKEND,
 						     obs_module_text("BodyMask.Backend"),
@@ -380,7 +393,7 @@ void runInference(BodyMaskFilter *f, const Image &frameBGRA)
 		PoseConfig pc;
 		pc.confThreshold = f->poseConf;
 		auto dets = f->pose->detect(frameBGRA, pc, /*bgr=*/true);
-		auto ids = f->tracker.update(dets);
+		auto ids = f->tracker.update(dets, f->trackIou, f->trackMiss);
 		buildLabelSprites(f, dets, ids);
 	}
 }

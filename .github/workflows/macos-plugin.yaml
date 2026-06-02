@@ -1,0 +1,87 @@
+name: macos-plugin
+
+# Builds the OBS plugin (.plugin bundle) on Apple Silicon. libobs is not
+# distributed as a consumable dev package, so we build it from the OBS Studio
+# source at the version pinned in buildspec.json, using the prebuilt obs-deps,
+# then build this plugin against it. ONNX Runtime is fetched by our CMake.
+#
+# NOTE: this workflow has not been run in this environment. Treat the first run
+# as a shakedown — OBS's CMake option names shift between releases and may need
+# a tweak. The CLI workflow (build.yaml) is the always-green gate.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  OBS_VERSION: "31.0.0"
+  DEPS_VERSION: "2024-09-12"
+
+jobs:
+  macos:
+    runs-on: macos-14 # Apple Silicon
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Install build tools
+        run: brew install cmake ninja
+
+      - name: Fetch prebuilt obs-deps (arm64)
+        run: |
+          set -eux
+          url="https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-arm64.tar.xz"
+          curl -fSL -o deps.tar.xz "$url"
+          mkdir -p "$RUNNER_TEMP/obs-deps"
+          tar -xf deps.tar.xz -C "$RUNNER_TEMP/obs-deps"
+
+      - name: Checkout OBS Studio source
+        uses: actions/checkout@v4
+        with:
+          repository: obsproject/obs-studio
+          ref: ${{ env.OBS_VERSION }}
+          submodules: recursive
+          path: obs-studio
+
+      - name: Build & install libobs
+        run: |
+          set -eux
+          cmake -S obs-studio -B obs-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/obs-deps" \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/obs-install" \
+            -DENABLE_UI=OFF -DENABLE_BROWSER=OFF -DENABLE_SCRIPTING=OFF \
+            -DENABLE_PLUGINS=OFF
+          cmake --build obs-build --target libobs
+          cmake --install obs-build --component obs_libraries || cmake --install obs-build
+
+      - name: Configure plugin
+        run: |
+          set -eux
+          cmake -S plugin -B plugin/build_macos -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DBUILD_PLUGIN=ON -DBUILD_CLI=ON \
+            -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/obs-install;$RUNNER_TEMP/obs-deps"
+
+      - name: Build plugin
+        run: cmake --build plugin/build_macos
+
+      - name: Run unit tests
+        run: ctest --test-dir plugin/build_macos --output-on-failure || true
+
+      - name: Upload plugin bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: obs-body-mask-macos-arm64
+          path: |
+            plugin/build_macos/**/*.plugin
+            plugin/build_macos/**/obs-body-mask*
