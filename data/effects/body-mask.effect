@@ -1,0 +1,74 @@
+// Compositing for the body-mask filter.
+//   Mask              -> white(human)/black(background) image
+//   MaskInverted      -> swapped (kept for completeness; invert is normally
+//                        applied in the inference core)
+//   BackgroundReplace -> lerp(background, source, mask) then blend original
+
+uniform float4x4 ViewProj;
+uniform texture2d image;          // source (set by obs_source_process_filter)
+uniform texture2d mask;           // GS_R8 binary mask
+uniform texture2d background;     // replacement image
+uniform float4 solid;             // solid replacement color (rgba 0..1)
+uniform bool useImage;            // true: sample `background`, false: `solid`
+uniform float originalBlend;      // 0..1 amount of original blended back in
+
+sampler_state texSampler {
+	Filter   = Linear;
+	AddressU = Clamp;
+	AddressV = Clamp;
+};
+
+struct VertInOut {
+	float4 pos : POSITION;
+	float2 uv  : TEXCOORD0;
+};
+
+VertInOut VSDefault(VertInOut v)
+{
+	VertInOut o;
+	o.pos = mul(float4(v.pos.xyz, 1.0), ViewProj);
+	o.uv = v.uv;
+	return o;
+}
+
+float4 PSMask(VertInOut v) : TARGET
+{
+	float m = mask.Sample(texSampler, v.uv).r;
+	return float4(m, m, m, 1.0);
+}
+
+float4 PSMaskInverted(VertInOut v) : TARGET
+{
+	float m = 1.0 - mask.Sample(texSampler, v.uv).r;
+	return float4(m, m, m, 1.0);
+}
+
+float4 PSBackground(VertInOut v) : TARGET
+{
+	float4 src = image.Sample(texSampler, v.uv);
+	float m = mask.Sample(texSampler, v.uv).r;
+	float4 bg = useImage ? background.Sample(texSampler, v.uv) : solid;
+	float4 rep = lerp(bg, src, m);
+	return lerp(rep, src, originalBlend);
+}
+
+technique Mask {
+	pass {
+		vertex_shader = VSDefault(v);
+		pixel_shader  = PSMask(v);
+	}
+}
+
+technique MaskInverted {
+	pass {
+		vertex_shader = VSDefault(v);
+		pixel_shader  = PSMaskInverted(v);
+	}
+}
+
+technique BackgroundReplace {
+	pass {
+		vertex_shader = VSDefault(v);
+		pixel_shader  = PSBackground(v);
+	}
+}

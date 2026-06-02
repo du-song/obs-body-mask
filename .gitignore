@@ -1,0 +1,15 @@
+# Build output
+/build/
+/build_macos/
+/release/
+
+# Fetched models / fonts (large binaries; see scripts/fetch-models.sh)
+/data/models/*.onnx
+/data/fonts/*.ttf
+
+# CMake/IDE
+CMakeCache.txt
+CMakeFiles/
+.cache/
+.DS_Store
+*.user

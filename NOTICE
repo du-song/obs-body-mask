@@ -1,0 +1,23 @@
+obs-body-mask
+Copyright (c) 2026 Swivel
+
+This OBS Studio plugin links against libobs and is distributed under the
+GNU General Public License v2.0 (see LICENSE).
+
+The GPU readback approach, effect-filter structure, and ONNX Runtime / CoreML
+session setup are modeled on the obs-backgroundremoval plugin
+(https://github.com/occ-ai/obs-backgroundremoval), GPLv2.
+
+Third-party components:
+
+- ONNX Runtime — MIT License (Microsoft). Bundled as a prebuilt dylib.
+- stb_image.h, stb_image_write.h, stb_truetype.h — public domain / MIT
+  (Sean Barrett). Vendored under src/third_party/.
+- MediaPipe Selfie Segmentation model — Apache-2.0 (Google).
+- YOLO11 / YOLOv8 pose model — AGPL-3.0 (Ultralytics). If you redistribute a
+  build that bundles this model, your obligations under AGPL-3.0 apply; swap in
+  a permissively-licensed pose model to avoid them.
+- Label font — license per the .ttf you bundle in data/fonts/.
+
+Models and fonts are downloaded by scripts/fetch-models.sh and are not part of
+this source repository.

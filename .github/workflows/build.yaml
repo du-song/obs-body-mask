@@ -1,0 +1,39 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  cli:
+    name: CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DBUILD_PLUGIN=OFF -DBUILD_CLI=ON -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Smoke test (mask mode on a fetched model + image)
+        shell: bash
+        run: |
+          mkdir -p data/models data/fonts
+          curl -fSL -o data/models/selfie_segmentation.onnx \
+            "https://huggingface.co/onnx-community/mediapipe_selfie_segmentation/resolve/main/onnx/model.onnx"
+          curl -fSL -o /tmp/people.jpg "https://ultralytics.com/images/zidane.jpg"
+          ./build/body-mask-cli --mode mask --input /tmp/people.jpg \
+            --output /tmp/mask.png --model data/models/selfie_segmentation.onnx
+          test -s /tmp/mask.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mask-${{ matrix.os }}
+          path: /tmp/mask.png

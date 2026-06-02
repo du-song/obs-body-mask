@@ -1,0 +1,35 @@
+{
+    "dependencies": {
+        "obs-studio": {
+            "version": "31.0.0",
+            "baseUrl": "https://github.com/obsproject/obs-studio/archive/refs/tags",
+            "label": "OBS Studio",
+            "hashes": {
+                "macos": ""
+            }
+        },
+        "prebuilt": {
+            "version": "2024-09-12",
+            "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+            "label": "Pre-Built obs-deps",
+            "hashes": {
+                "macos": ""
+            }
+        }
+    },
+    "name": "obs-body-mask",
+    "displayName": "Body Segmentation Mask",
+    "version": "0.1.0",
+    "author": "song@swivel.ai",
+    "website": "https://swivel.ai",
+    "email": "song@swivel.ai",
+    "uuids": {
+        "macosPackage": "ai.swivel.obs-body-mask.pkg",
+        "macosApplication": "ai.swivel.obs-body-mask"
+    },
+    "platformConfig": {
+        "macos": {
+            "bundleId": "ai.swivel.obs-body-mask"
+        }
+    }
+}

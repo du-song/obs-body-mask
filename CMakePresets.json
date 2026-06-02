@@ -1,0 +1,46 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 28,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "macos",
+            "displayName": "macOS (Apple Silicon)",
+            "description": "Build the OBS plugin for macOS arm64 with ONNX Runtime + CoreML",
+            "binaryDir": "${sourceDir}/build_macos",
+            "generator": "Xcode",
+            "cacheVariables": {
+                "CMAKE_OSX_ARCHITECTURES": "arm64",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+                "BUILD_PLUGIN": true,
+                "BUILD_CLI": true,
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+            }
+        },
+        {
+            "name": "cli-linux",
+            "displayName": "CLI only (Linux dev/CI)",
+            "description": "Build just the shared core + CLI test tool (no OBS)",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "BUILD_PLUGIN": false,
+                "BUILD_CLI": true,
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "macos",
+            "configurePreset": "macos",
+            "configuration": "RelWithDebInfo"
+        },
+        {
+            "name": "cli-linux",
+            "configurePreset": "cli-linux"
+        }
+    ]
+}
