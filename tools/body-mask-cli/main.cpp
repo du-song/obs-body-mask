@@ -46,6 +46,8 @@ static void usage()
 		"  --pose-model FILE     pose onnx (default models/yolo26n-pose.onnx)\n"
 		"  --font FILE           ttf for labels (default fonts/overlay.ttf)\n"
 		"  --font-size N         label pixel height (default 28)\n"
+		"  --edge-color RRGGBB   body outline color (default FF0000; empty=off)\n"
+		"  --edge-thickness N    outline width in px (default 3; 0=off)\n"
 		"  --backend cpu|coreml  (default cpu)\n");
 }
 
@@ -105,6 +107,10 @@ int main(int argc, char **argv)
 			float ob = std::stof(get("original-blend", "0")) / 100.f;
 			out = backgroundReplace(src, mask, bg, solid, useImage, ob);
 		}
+		int edgeThick = std::stoi(get("edge-thickness", "3"));
+		if (edgeThick > 0)
+			drawEdge(out, bodyEdge(mask, edgeThick),
+				 parseHexColor(get("edge-color", "FF0000")));
 		if (!savePNG(output, out))
 			return 1;
 		printf("wrote %s (%dx%d)\n", output.c_str(), out.w, out.h);

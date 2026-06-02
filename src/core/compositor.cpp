@@ -4,6 +4,60 @@
 
 namespace obm {
 
+// Separable 1-D min/max (erosion/dilation) over a [-radius,radius] window.
+static Image morph1(const Image &src, int radius, bool dilate)
+{
+	Image tmp(src.w, src.h, 1), dst(src.w, src.h, 1);
+	auto op = [dilate](uint8_t a, uint8_t b) { return dilate ? std::max(a, b) : std::min(a, b); };
+	for (int y = 0; y < src.h; ++y)
+		for (int x = 0; x < src.w; ++x) {
+			uint8_t v = src.data[(size_t)y * src.w + x];
+			for (int k = -radius; k <= radius; ++k)
+				v = op(v, src.data[(size_t)y * src.w + std::clamp(x + k, 0, src.w - 1)]);
+			tmp.data[(size_t)y * src.w + x] = v;
+		}
+	for (int x = 0; x < src.w; ++x)
+		for (int y = 0; y < src.h; ++y) {
+			uint8_t v = tmp.data[(size_t)y * src.w + x];
+			for (int k = -radius; k <= radius; ++k)
+				v = op(v, tmp.data[(size_t)std::clamp(y + k, 0, src.h - 1) * src.w + x]);
+			dst.data[(size_t)y * src.w + x] = v;
+		}
+	return dst;
+}
+
+Image bodyEdge(const Image &mask, int thickness)
+{
+	Image edge(mask.w, mask.h, 1);
+	if (mask.empty() || mask.c != 1 || thickness <= 0)
+		return edge;
+	const int r = std::max(1, thickness / 2);
+	// Binarize so a feathered (grey) mask still yields a crisp outline.
+	Image bin(mask.w, mask.h, 1);
+	for (size_t i = 0; i < bin.data.size(); ++i)
+		bin.data[i] = mask.data[i] >= 128 ? 255 : 0;
+	const Image dil = morph1(bin, r, /*dilate=*/true);
+	const Image ero = morph1(bin, r, /*dilate=*/false);
+	for (size_t i = 0; i < edge.data.size(); ++i)
+		edge.data[i] = (dil.data[i] && !ero.data[i]) ? 255 : 0;
+	return edge;
+}
+
+void drawEdge(Image &canvas, const Image &edge, Color color)
+{
+	if (edge.empty() || canvas.c < 3 || edge.w != canvas.w || edge.h != canvas.h)
+		return;
+	for (int y = 0; y < canvas.h; ++y)
+		for (int x = 0; x < canvas.w; ++x) {
+			if (!edge.pixel(x, y)[0])
+				continue;
+			uint8_t *c = canvas.pixel(x, y);
+			c[0] = color.r;
+			c[1] = color.g;
+			c[2] = color.b;
+		}
+}
+
 Image maskToRGB(const Image &mask)
 {
 	Image out(mask.w, mask.h, 3);

@@ -24,6 +24,7 @@
 #include "core/pose-detector.h"
 #include "core/pose-tracker.h"
 #include "core/text-raster.h"
+#include "core/compositor.h"
 
 #define S_MODE "mode"
 #define S_THRESHOLD "threshold"
@@ -45,6 +46,9 @@
 #define S_TRACK_MISS "track_miss"
 #define S_BACKEND "backend"
 #define S_RUN_EVERY "run_every"
+#define S_EDGE "edge_enabled"
+#define S_EDGE_COLOR "edge_color"
+#define S_EDGE_THICK "edge_thickness"
 
 using namespace obm;
 
@@ -63,6 +67,7 @@ struct BodyMaskFilter {
 	gs_stagesurf_t *stagesurface = nullptr;
 	gs_effect_t *effect = nullptr;
 	gs_texture_t *maskTexture = nullptr;
+	gs_texture_t *edgeTexture = nullptr;
 	gs_texture_t *solidTexture = nullptr;
 
 	gs_image_file_t bgImage{};
@@ -99,9 +104,13 @@ struct BodyMaskFilter {
 	int trackMiss = 15;    // frames a track survives without a detection
 	Backend backend = Backend::CoreML;
 	int runEvery = 1;
+	bool edgeEnabled = true;          // draw a silhouette outline
+	uint32_t edgeColor = 0xff0000ff;  // OBS 0xAABBGGRR; default opaque red
+	int edgeThickness = 3;            // outline width in px
 
 	int frameCounter = 0;
 	Image mask;                       // latest binary mask (w*h, 1ch)
+	Image edge;                       // latest outline band (w*h, 1ch)
 	std::vector<LabelSprite> labels;  // latest head labels (GPU textures)
 	bool dirtySegModel = true, dirtyPoseModel = true, dirtyFont = true, dirtyBg = true;
 };
@@ -198,6 +207,9 @@ void updateSettings(void *data, obs_data_t *s)
 	f->trackMiss = (int)obs_data_get_int(s, S_TRACK_MISS);
 	f->backend = newBackend;
 	f->runEvery = (int)obs_data_get_int(s, S_RUN_EVERY);
+	f->edgeEnabled = obs_data_get_bool(s, S_EDGE);
+	f->edgeColor = (uint32_t)obs_data_get_int(s, S_EDGE_COLOR);
+	f->edgeThickness = (int)obs_data_get_int(s, S_EDGE_THICK);
 
 	rebuildModels(f);
 	loadBackgroundImage(f);
@@ -231,6 +243,8 @@ void destroyFilter(void *data)
 		gs_stagesurface_destroy(f->stagesurface);
 	if (f->maskTexture)
 		gs_texture_destroy(f->maskTexture);
+	if (f->edgeTexture)
+		gs_texture_destroy(f->edgeTexture);
 	if (f->solidTexture)
 		gs_texture_destroy(f->solidTexture);
 	if (f->effect)
@@ -265,6 +279,9 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_int(s, S_TRACK_MISS, 15);
 	obs_data_set_default_string(s, S_BACKEND, "coreml");
 	obs_data_set_default_int(s, S_RUN_EVERY, 1);
+	obs_data_set_default_bool(s, S_EDGE, true);
+	obs_data_set_default_int(s, S_EDGE_COLOR, 0xff0000ff); // opaque red (0xAABBGGRR)
+	obs_data_set_default_int(s, S_EDGE_THICK, 3);
 }
 
 bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
@@ -281,6 +298,14 @@ bool overlayChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 	bool on = obs_data_get_bool(s, S_OVERLAY);
 	for (const char *k : {S_POSE_MODEL, S_POSE_CONF, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET,
 			      S_TRACK_IOU, S_TRACK_MISS})
+		obs_property_set_visible(obs_properties_get(props, k), on);
+	return true;
+}
+
+bool edgeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
+{
+	bool on = obs_data_get_bool(s, S_EDGE);
+	for (const char *k : {S_EDGE_COLOR, S_EDGE_THICK})
 		obs_property_set_visible(obs_properties_get(props, k), on);
 	return true;
 }
@@ -305,6 +330,12 @@ obs_properties_t *getProperties(void *)
 	obs_property_list_add_int(isz, "512", 512);
 	obs_properties_add_bool(p, S_INVERT, obs_module_text("BodyMask.Invert"));
 	obs_properties_add_int_slider(p, S_FEATHER, obs_module_text("BodyMask.Feather"), 0, 32, 1);
+
+	obs_property_t *edge = obs_properties_add_bool(p, S_EDGE, obs_module_text("BodyMask.Edge"));
+	obs_property_set_modified_callback(edge, edgeChanged);
+	obs_properties_add_color(p, S_EDGE_COLOR, obs_module_text("BodyMask.EdgeColor"));
+	obs_properties_add_int_slider(p, S_EDGE_THICK, obs_module_text("BodyMask.EdgeThickness"), 1, 32,
+				      1);
 
 	obs_property_t *segm = obs_properties_add_list(p, S_SEG_MODEL,
 						       obs_module_text("BodyMask.SegModel"),
@@ -393,6 +424,9 @@ void runInference(BodyMaskFilter *f, const Image &frameBGRA)
 		cfg.invert = f->invert;
 		cfg.featherPx = f->feather;
 		f->mask = f->seg->segment(frameBGRA, cfg, /*bgr=*/true);
+		f->edge = (f->edgeEnabled && !f->mask.empty())
+				  ? bodyEdge(f->mask, f->edgeThickness)
+				  : Image();
 	}
 	if (f->overlay && f->pose && f->pose->ok()) {
 		PoseConfig pc;
@@ -440,6 +474,21 @@ void videoRender(void *data, gs_effect_t *)
 			gs_texture_set_image(f->maskTexture, mptr, (uint32_t)f->mask.w, false);
 	}
 
+	// Upload the outline band to its own GS_R8 texture (mirrors the mask).
+	if (f->edgeEnabled && !f->edge.empty()) {
+		const uint8_t *eptr = f->edge.data.data();
+		if (f->edgeTexture && (gs_texture_get_width(f->edgeTexture) != (uint32_t)f->edge.w ||
+				       gs_texture_get_height(f->edgeTexture) != (uint32_t)f->edge.h)) {
+			gs_texture_destroy(f->edgeTexture);
+			f->edgeTexture = nullptr;
+		}
+		if (!f->edgeTexture)
+			f->edgeTexture = gs_texture_create((uint32_t)f->edge.w, (uint32_t)f->edge.h,
+							   GS_R8, 1, &eptr, GS_DYNAMIC);
+		else
+			gs_texture_set_image(f->edgeTexture, eptr, (uint32_t)f->edge.w, false);
+	}
+
 	if (!f->maskTexture) {
 		obs_source_skip_video_filter(f->source);
 		return;
@@ -451,6 +500,16 @@ void videoRender(void *data, gs_effect_t *)
 
 	gs_eparam_t *maskParam = gs_effect_get_param_by_name(f->effect, "mask");
 	gs_effect_set_texture(maskParam, f->maskTexture);
+
+	// Outline overlay params (used by every technique). Bind a valid texture
+	// even when disabled so the sampler is never unbound; edgeEnabled gates it.
+	bool edgeOn = f->edgeEnabled && f->edgeTexture;
+	gs_effect_set_bool(gs_effect_get_param_by_name(f->effect, "edgeEnabled"), edgeOn);
+	struct vec4 edgeColorV;
+	vec4_from_rgba(&edgeColorV, f->edgeColor); // OBS color int is 0xAABBGGRR
+	gs_effect_set_vec4(gs_effect_get_param_by_name(f->effect, "edgeColor"), &edgeColorV);
+	gs_effect_set_texture(gs_effect_get_param_by_name(f->effect, "edge"),
+			      f->edgeTexture ? f->edgeTexture : f->maskTexture);
 
 	const char *tech = "Mask";
 	if (f->mode == "background") {

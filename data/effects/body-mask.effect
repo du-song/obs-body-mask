@@ -11,6 +11,9 @@ uniform texture2d background;     // replacement image
 uniform float4 solid;             // solid replacement color (rgba 0..1)
 uniform bool useImage;            // true: sample `background`, false: `solid`
 uniform float originalBlend;      // 0..1 amount of original blended back in
+uniform texture2d edge;           // GS_R8 silhouette outline band
+uniform float4 edgeColor;         // outline color (rgba 0..1)
+uniform bool edgeEnabled;         // overlay the outline when true
 
 sampler_state texSampler {
 	Filter   = Linear;
@@ -31,16 +34,23 @@ VertInOut VSDefault(VertInOut v)
 	return o;
 }
 
+// Blend the outline color over `rgb` where the edge band is present.
+float3 ApplyEdge(float3 rgb, float2 uv)
+{
+	float e = edgeEnabled ? edge.Sample(texSampler, uv).r : 0.0;
+	return lerp(rgb, edgeColor.rgb, e);
+}
+
 float4 PSMask(VertInOut v) : TARGET
 {
 	float m = mask.Sample(texSampler, v.uv).r;
-	return float4(m, m, m, 1.0);
+	return float4(ApplyEdge(float3(m, m, m), v.uv), 1.0);
 }
 
 float4 PSMaskInverted(VertInOut v) : TARGET
 {
 	float m = 1.0 - mask.Sample(texSampler, v.uv).r;
-	return float4(m, m, m, 1.0);
+	return float4(ApplyEdge(float3(m, m, m), v.uv), 1.0);
 }
 
 float4 PSBackground(VertInOut v) : TARGET
@@ -49,7 +59,9 @@ float4 PSBackground(VertInOut v) : TARGET
 	float m = mask.Sample(texSampler, v.uv).r;
 	float4 bg = useImage ? background.Sample(texSampler, v.uv) : solid;
 	float4 rep = lerp(bg, src, m);
-	return lerp(rep, src, originalBlend);
+	float4 outc = lerp(rep, src, originalBlend);
+	outc.rgb = ApplyEdge(outc.rgb, v.uv);
+	return outc;
 }
 
 technique Mask {

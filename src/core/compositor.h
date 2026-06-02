@@ -24,4 +24,13 @@ void drawLabel(Image &canvas, const Image &label, int cx, int bottomY);
 // Renders the mask itself as a white/black RGB image (for --mode mask output).
 Image maskToRGB(const Image &mask);
 
+// Outline band along the body silhouette: the morphological gradient of the
+// (binarized) mask, ~`thickness` px wide and centered on the boundary. Returns
+// a 1-channel image (255 on the edge band, 0 elsewhere). The OBS filter uploads
+// this as a texture and overlays it in the shader; the CLI uses drawEdge().
+Image bodyEdge(const Image &mask, int thickness);
+
+// Paints `edge` (1ch band from bodyEdge) onto `canvas` (3ch) in `color`.
+void drawEdge(Image &canvas, const Image &edge, Color color);
+
 } // namespace obm
