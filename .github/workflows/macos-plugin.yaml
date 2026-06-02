@@ -28,6 +28,13 @@ jobs:
         with:
           path: plugin
 
+      - name: Select latest-stable Xcode
+        # OBS 31 requires the macOS 14.2 SDK (Xcode 15.1+); the runner default
+        # may be older, which makes OBS's CMake report an empty/too-low SDK.
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Install build tools
         run: brew install cmake ninja
 
