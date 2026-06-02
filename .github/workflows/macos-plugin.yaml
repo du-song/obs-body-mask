@@ -59,8 +59,12 @@ jobs:
           set -eux
           # OBS Studio's CMake mandates the Xcode generator on macOS (multi-
           # config, so build/install take --config).
+          # OBS reads the SDK version from CMAKE_OSX_SYSROOT; set it explicitly
+          # (a bare cmake invocation otherwise leaves it empty -> "SDK () too low").
+          SYSROOT="$(xcrun --sdk macosx --show-sdk-path)"
           cmake -S obs-studio -B obs-build -G Xcode \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT="$SYSROOT" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/obs-deps" \
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/obs-install" \
