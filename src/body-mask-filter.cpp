@@ -21,6 +21,7 @@
 #include "obs-utils/obs-utils.h"
 #include "core/body-segmenter.h"
 #include "core/pose-detector.h"
+#include "core/pose-tracker.h"
 #include "core/text-raster.h"
 
 #define S_MODE "mode"
@@ -67,6 +68,7 @@ struct BodyMaskFilter {
 	Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "obs-body-mask"};
 	std::unique_ptr<BodySegmenter> seg;
 	std::unique_ptr<PoseDetector> pose;
+	PoseTracker tracker; // persistent "Person N" IDs across frames
 	std::unique_ptr<TextRaster> textRaster;
 	std::mutex modelMutex;
 
@@ -87,7 +89,7 @@ struct BodyMaskFilter {
 	uint32_t textColor = 0xff00e6ff;
 	int vOffset = 6;
 	Backend backend = Backend::CoreML;
-	int runEvery = 2;
+	int runEvery = 1;
 
 	int frameCounter = 0;
 	Image mask;                       // latest binary mask (w*h, 1ch)
@@ -249,7 +251,7 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_int(s, S_TEXT_COLOR, 0xff00e6ff);
 	obs_data_set_default_int(s, S_VOFFSET, 6);
 	obs_data_set_default_string(s, S_BACKEND, "coreml");
-	obs_data_set_default_int(s, S_RUN_EVERY, 2);
+	obs_data_set_default_int(s, S_RUN_EVERY, 1);
 }
 
 bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
@@ -332,8 +334,10 @@ obs_properties_t *getProperties(void *)
 	return p;
 }
 
-// Build the per-head label textures from the latest detections.
-void buildLabelSprites(BodyMaskFilter *f, const std::vector<Detection> &dets)
+// Build the per-head label textures from the latest detections, using the
+// tracker's persistent IDs so a number stays glued to the same person.
+void buildLabelSprites(BodyMaskFilter *f, const std::vector<Detection> &dets,
+		       const std::vector<int> &ids)
 {
 	for (auto &l : f->labels)
 		if (l.tex)
@@ -343,9 +347,9 @@ void buildLabelSprites(BodyMaskFilter *f, const std::vector<Detection> &dets)
 		return;
 	Color col{(uint8_t)(f->textColor & 0xff), (uint8_t)((f->textColor >> 8) & 0xff),
 		  (uint8_t)((f->textColor >> 16) & 0xff)};
-	int n = 1;
-	for (const auto &d : dets) {
-		Image rgba = f->textRaster->render("Person " + std::to_string(n++),
+	for (size_t i = 0; i < dets.size(); ++i) {
+		const auto &d = dets[i];
+		Image rgba = f->textRaster->render("Person " + std::to_string(ids[i]),
 						   (float)f->fontSize, col);
 		if (rgba.empty())
 			continue;
@@ -376,7 +380,8 @@ void runInference(BodyMaskFilter *f, const Image &frameBGRA)
 		PoseConfig pc;
 		pc.confThreshold = f->poseConf;
 		auto dets = f->pose->detect(frameBGRA, pc, /*bgr=*/true);
-		buildLabelSprites(f, dets);
+		auto ids = f->tracker.update(dets);
+		buildLabelSprites(f, dets, ids);
 	}
 }
 

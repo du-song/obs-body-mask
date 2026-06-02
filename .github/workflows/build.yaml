@@ -22,6 +22,9 @@ jobs:
       - name: Build
         run: cmake --build build -j
 
+      - name: Unit tests (tracker)
+        run: ctest --test-dir build --output-on-failure
+
       - name: Smoke test (mask mode on a fetched model + image)
         shell: bash
         run: |

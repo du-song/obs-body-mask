@@ -12,6 +12,7 @@
 
 #include "../../src/core/body-segmenter.h"
 #include "../../src/core/pose-detector.h"
+#include "../../src/core/pose-tracker.h"
 #include "../../src/core/compositor.h"
 #include "../../src/core/text-raster.h"
 #include "../../src/core/image-io.h"
@@ -123,11 +124,12 @@ int main(int argc, char **argv)
 			return 1;
 		float fontSize = std::stof(get("font-size", "28"));
 		Image canvas = src; // draw on a copy of the original
-		int n = 1;
-		for (auto &det : dets) {
-			Image label = tr.render("Person " + std::to_string(n++), fontSize,
+		PoseTracker tracker; // persistent IDs (stable across frames in video use)
+		auto ids = tracker.update(dets);
+		for (size_t i = 0; i < dets.size(); ++i) {
+			Image label = tr.render("Person " + std::to_string(ids[i]), fontSize,
 						 Color{255, 230, 0});
-			drawLabel(canvas, label, (int)det.headX, (int)det.headY - 4);
+			drawLabel(canvas, label, (int)dets[i].headX, (int)dets[i].headY - 4);
 		}
 		if (!savePNG(output, canvas))
 			return 1;

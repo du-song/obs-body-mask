@@ -19,6 +19,7 @@ add_library(body-segmenter-core STATIC
   src/ort-utils/ort-session-utils.cpp
   src/core/body-segmenter.cpp
   src/core/pose-detector.cpp
+  src/core/pose-tracker.cpp
   src/core/compositor.cpp
   src/core/text-raster.cpp
   src/core/image-io.cpp)
@@ -29,6 +30,11 @@ target_link_libraries(body-segmenter-core PUBLIC Ort::onnxruntime)
 if(BUILD_CLI)
   add_executable(body-mask-cli tools/body-mask-cli/main.cpp)
   target_link_libraries(body-mask-cli PRIVATE body-segmenter-core)
+
+  add_executable(track-test tests/track_test.cpp)
+  target_link_libraries(track-test PRIVATE body-segmenter-core)
+  enable_testing()
+  add_test(NAME tracker COMMAND track-test)
 endif()
 
 # --- OBS plugin -----------------------------------------------------------
