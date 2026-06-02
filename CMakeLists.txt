@@ -103,6 +103,31 @@ if(BUILD_PLUGIN)
                 "$<TARGET_BUNDLE_CONTENT_DIR:obs-body-mask>/Resources"
         COMMENT "Bundling plugin data (effects, locale, models, font)"
         VERBATIM)
+
+      # `cmake --install <build-dir>` copies the .plugin into the OBS user
+      # plugins dir and ad-hoc re-signs it. The re-sign is required because the
+      # post-build data copy above invalidates the linker signature, which can
+      # otherwise make OBS's dlopen fail on recent macOS. Override the location
+      # with -DOBS_PLUGIN_INSTALL_DIR=... ; then restart OBS to load it.
+      set(OBS_PLUGIN_INSTALL_DIR
+          "$ENV{HOME}/Library/Application Support/obs-studio/plugins"
+          CACHE PATH "Destination for 'cmake --install' of the .plugin bundle")
+      install(CODE "
+        set(_dst \"${OBS_PLUGIN_INSTALL_DIR}\")
+        set(_bundle \"$<TARGET_BUNDLE_DIR:obs-body-mask>\")
+        get_filename_component(_name \"\${_bundle}\" NAME)
+        message(STATUS \"Installing \${_name} -> \${_dst}\")
+        file(REMOVE_RECURSE \"\${_dst}/\${_name}\")
+        file(MAKE_DIRECTORY \"\${_dst}\")
+        file(COPY \"\${_bundle}\" DESTINATION \"\${_dst}\")
+        execute_process(
+          COMMAND codesign --force --deep --sign - \"\${_dst}/\${_name}\"
+          RESULT_VARIABLE _rc)
+        if(NOT _rc EQUAL 0)
+          message(FATAL_ERROR \"codesign failed (rc=\${_rc})\")
+        endif()
+        message(STATUS \"Installed \${_name} (ad-hoc signed). Restart OBS to load it.\")
+      ")
     endif()
   endif()
 endif()
