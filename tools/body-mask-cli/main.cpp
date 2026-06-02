@@ -46,8 +46,9 @@ static void usage()
 		"  --pose-model FILE     pose onnx (default models/yolo26n-pose.onnx)\n"
 		"  --font FILE           ttf for labels (default fonts/overlay.ttf)\n"
 		"  --font-size N         label pixel height (default 28)\n"
-		"  --edge-color RRGGBB   body outline color (default FF0000; empty=off)\n"
-		"  --edge-thickness N    outline width in px (default 3; 0=off)\n"
+		"  --highlight off|outline|box  highlight detected bodies (default off)\n"
+		"  --highlight-color RRGGBB     highlight color (default FF0000)\n"
+		"  --highlight-thickness N      outline/box line width in px (default 3)\n"
 		"  --backend cpu|coreml  (default cpu)\n");
 }
 
@@ -107,10 +108,23 @@ int main(int argc, char **argv)
 			float ob = std::stof(get("original-blend", "0")) / 100.f;
 			out = backgroundReplace(src, mask, bg, solid, useImage, ob);
 		}
-		int edgeThick = std::stoi(get("edge-thickness", "3"));
-		if (edgeThick > 0)
-			drawEdge(out, bodyEdge(mask, edgeThick),
-				 parseHexColor(get("edge-color", "FF0000")));
+		const std::string hl = get("highlight", "off");
+		const Color hlColor = parseHexColor(get("highlight-color", "FF0000"));
+		const int hlThick = std::stoi(get("highlight-thickness", "3"));
+		if (hl == "outline") {
+			drawEdge(out, bodyEdge(mask, hlThick), hlColor);
+		} else if (hl == "box") {
+			PoseDetector pose(env, get("pose-model", "models/yolo26n-pose.onnx"), backend);
+			if (pose.ok()) {
+				PoseConfig pc;
+				pc.confThreshold = std::stof(get("pose-conf", "0.25"));
+				for (const auto &d : pose.detect(src, pc, /*bgr=*/false)) {
+					Box b = headSquare(d);
+					drawRect(out, (int)b.x0, (int)b.y0, (int)b.x1, (int)b.y1, hlColor,
+						 hlThick);
+				}
+			}
+		}
 		if (!savePNG(output, out))
 			return 1;
 		printf("wrote %s (%dx%d)\n", output.c_str(), out.w, out.h);

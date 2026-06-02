@@ -46,9 +46,9 @@
 #define S_TRACK_MISS "track_miss"
 #define S_BACKEND "backend"
 #define S_RUN_EVERY "run_every"
-#define S_EDGE "edge_enabled"
-#define S_EDGE_COLOR "edge_color"
-#define S_EDGE_THICK "edge_thickness"
+#define S_HIGHLIGHT "highlight"             // "off" | "outline" | "box"
+#define S_HL_COLOR "highlight_color"
+#define S_HL_THICK "highlight_thickness"
 
 using namespace obm;
 
@@ -104,13 +104,14 @@ struct BodyMaskFilter {
 	int trackMiss = 15;    // frames a track survives without a detection
 	Backend backend = Backend::CoreML;
 	int runEvery = 1;
-	bool edgeEnabled = true;          // draw a silhouette outline
-	uint32_t edgeColor = 0xff0000ff;  // OBS 0xAABBGGRR; default opaque red
-	int edgeThickness = 3;            // outline width in px
+	std::string highlight = "off";        // "off" | "outline" | "box"
+	uint32_t highlightColor = 0xff0000ff; // OBS 0xAABBGGRR; default opaque red
+	int highlightThickness = 3;           // outline/box line width in px
 
 	int frameCounter = 0;
 	Image mask;                       // latest binary mask (w*h, 1ch)
 	Image edge;                       // latest outline band (w*h, 1ch)
+	std::vector<Box> headBoxes;       // latest head boxes (source px, box mode)
 	std::vector<LabelSprite> labels;  // latest head labels (GPU textures)
 	bool dirtySegModel = true, dirtyPoseModel = true, dirtyFont = true, dirtyBg = true;
 };
@@ -131,7 +132,9 @@ void rebuildModels(BodyMaskFilter *f)
 		}
 		f->dirtySegModel = false;
 	}
-	if (f->overlay && f->dirtyPoseModel) {
+	// Pose is needed for the head-text overlay and for the "box" highlight.
+	const bool needPose = f->overlay || f->highlight == "box";
+	if (needPose && f->dirtyPoseModel) {
 		char *p = obs_module_file(("models/" + f->poseModel).c_str());
 		if (p) {
 			f->pose = std::make_unique<PoseDetector>(f->env, p, f->backend);
@@ -179,10 +182,12 @@ void updateSettings(void *data, obs_data_t *s)
 	std::string newBgType = obs_data_get_string(s, S_BG_TYPE);
 	std::string newBgImage = obs_data_get_string(s, S_BG_IMAGE);
 	bool newOverlay = obs_data_get_bool(s, S_OVERLAY);
+	std::string newHighlight = obs_data_get_string(s, S_HIGHLIGHT);
+	bool needPose = newOverlay || newHighlight == "box";
 
 	if (newSeg != f->segModel || newBackend != f->backend)
 		f->dirtySegModel = true;
-	if (newPose != f->poseModel || newBackend != f->backend || (newOverlay && !f->pose))
+	if (newPose != f->poseModel || newBackend != f->backend || (needPose && !f->pose))
 		f->dirtyPoseModel = true;
 	if (newBgType != f->bgType || newBgImage != f->bgImagePath)
 		f->dirtyBg = true;
@@ -207,9 +212,9 @@ void updateSettings(void *data, obs_data_t *s)
 	f->trackMiss = (int)obs_data_get_int(s, S_TRACK_MISS);
 	f->backend = newBackend;
 	f->runEvery = (int)obs_data_get_int(s, S_RUN_EVERY);
-	f->edgeEnabled = obs_data_get_bool(s, S_EDGE);
-	f->edgeColor = (uint32_t)obs_data_get_int(s, S_EDGE_COLOR);
-	f->edgeThickness = (int)obs_data_get_int(s, S_EDGE_THICK);
+	f->highlight = newHighlight;
+	f->highlightColor = (uint32_t)obs_data_get_int(s, S_HL_COLOR);
+	f->highlightThickness = (int)obs_data_get_int(s, S_HL_THICK);
 
 	rebuildModels(f);
 	loadBackgroundImage(f);
@@ -279,9 +284,9 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_int(s, S_TRACK_MISS, 15);
 	obs_data_set_default_string(s, S_BACKEND, "coreml");
 	obs_data_set_default_int(s, S_RUN_EVERY, 1);
-	obs_data_set_default_bool(s, S_EDGE, true);
-	obs_data_set_default_int(s, S_EDGE_COLOR, 0xff0000ff); // opaque red (0xAABBGGRR)
-	obs_data_set_default_int(s, S_EDGE_THICK, 3);
+	obs_data_set_default_string(s, S_HIGHLIGHT, "off");
+	obs_data_set_default_int(s, S_HL_COLOR, 0xff0000ff); // opaque red (0xAABBGGRR)
+	obs_data_set_default_int(s, S_HL_THICK, 3);
 }
 
 bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
@@ -293,20 +298,23 @@ bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 	return true;
 }
 
-bool overlayChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
+// Show/hide dependent controls. Pose model+confidence are shared by the head
+// overlay and the "box" highlight; the label styling controls are overlay-only;
+// the highlight color/thickness show whenever a highlight style is selected.
+bool syncVisibility(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 {
-	bool on = obs_data_get_bool(s, S_OVERLAY);
-	for (const char *k : {S_POSE_MODEL, S_POSE_CONF, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET,
-			      S_TRACK_IOU, S_TRACK_MISS})
+	const bool overlay = obs_data_get_bool(s, S_OVERLAY);
+	const std::string hl = obs_data_get_string(s, S_HIGHLIGHT);
+	const bool box = hl == "box";
+	auto vis = [&](const char *k, bool on) {
 		obs_property_set_visible(obs_properties_get(props, k), on);
-	return true;
-}
-
-bool edgeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
-{
-	bool on = obs_data_get_bool(s, S_EDGE);
-	for (const char *k : {S_EDGE_COLOR, S_EDGE_THICK})
-		obs_property_set_visible(obs_properties_get(props, k), on);
+	};
+	vis(S_POSE_MODEL, overlay || box);
+	vis(S_POSE_CONF, overlay || box);
+	for (const char *k : {S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET, S_TRACK_IOU, S_TRACK_MISS})
+		vis(k, overlay);
+	for (const char *k : {S_HL_COLOR, S_HL_THICK})
+		vis(k, hl != "off");
 	return true;
 }
 
@@ -331,11 +339,16 @@ obs_properties_t *getProperties(void *)
 	obs_properties_add_bool(p, S_INVERT, obs_module_text("BodyMask.Invert"));
 	obs_properties_add_int_slider(p, S_FEATHER, obs_module_text("BodyMask.Feather"), 0, 32, 1);
 
-	obs_property_t *edge = obs_properties_add_bool(p, S_EDGE, obs_module_text("BodyMask.Edge"));
-	obs_property_set_modified_callback(edge, edgeChanged);
-	obs_properties_add_color(p, S_EDGE_COLOR, obs_module_text("BodyMask.EdgeColor"));
-	obs_properties_add_int_slider(p, S_EDGE_THICK, obs_module_text("BodyMask.EdgeThickness"), 1, 32,
-				      1);
+	obs_property_t *hl = obs_properties_add_list(p, S_HIGHLIGHT,
+						     obs_module_text("BodyMask.Highlight"),
+						     OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(hl, obs_module_text("BodyMask.Highlight.Off"), "off");
+	obs_property_list_add_string(hl, obs_module_text("BodyMask.Highlight.Outline"), "outline");
+	obs_property_list_add_string(hl, obs_module_text("BodyMask.Highlight.Box"), "box");
+	obs_property_set_modified_callback(hl, syncVisibility);
+	obs_properties_add_color(p, S_HL_COLOR, obs_module_text("BodyMask.HighlightColor"));
+	obs_properties_add_int_slider(p, S_HL_THICK, obs_module_text("BodyMask.HighlightThickness"), 1,
+				      32, 1);
 
 	obs_property_t *segm = obs_properties_add_list(p, S_SEG_MODEL,
 						       obs_module_text("BodyMask.SegModel"),
@@ -356,7 +369,7 @@ obs_properties_t *getProperties(void *)
 
 	obs_property_t *ov = obs_properties_add_bool(p, S_OVERLAY,
 						     obs_module_text("BodyMask.Overlay"));
-	obs_property_set_modified_callback(ov, overlayChanged);
+	obs_property_set_modified_callback(ov, syncVisibility);
 	obs_property_t *posem = obs_properties_add_list(p, S_POSE_MODEL,
 							obs_module_text("BodyMask.PoseModel"),
 							OBS_COMBO_TYPE_LIST,
@@ -424,16 +437,25 @@ void runInference(BodyMaskFilter *f, const Image &frameBGRA)
 		cfg.invert = f->invert;
 		cfg.featherPx = f->feather;
 		f->mask = f->seg->segment(frameBGRA, cfg, /*bgr=*/true);
-		f->edge = (f->edgeEnabled && !f->mask.empty())
-				  ? bodyEdge(f->mask, f->edgeThickness)
+		f->edge = (f->highlight == "outline" && !f->mask.empty())
+				  ? bodyEdge(f->mask, f->highlightThickness)
 				  : Image();
 	}
-	if (f->overlay && f->pose && f->pose->ok()) {
+	const bool box = f->highlight == "box";
+	if ((f->overlay || box) && f->pose && f->pose->ok()) {
 		PoseConfig pc;
 		pc.confThreshold = f->poseConf;
 		auto dets = f->pose->detect(frameBGRA, pc, /*bgr=*/true);
-		auto ids = f->tracker.update(dets, f->trackIou, f->trackMiss);
-		buildLabelSprites(f, dets, ids);
+		if (f->overlay) {
+			auto ids = f->tracker.update(dets, f->trackIou, f->trackMiss);
+			buildLabelSprites(f, dets, ids);
+		}
+		f->headBoxes.clear();
+		if (box)
+			for (const auto &d : dets)
+				f->headBoxes.push_back(headSquare(d));
+	} else {
+		f->headBoxes.clear();
 	}
 }
 
@@ -475,7 +497,7 @@ void videoRender(void *data, gs_effect_t *)
 	}
 
 	// Upload the outline band to its own GS_R8 texture (mirrors the mask).
-	if (f->edgeEnabled && !f->edge.empty()) {
+	if (f->highlight == "outline" && !f->edge.empty()) {
 		const uint8_t *eptr = f->edge.data.data();
 		if (f->edgeTexture && (gs_texture_get_width(f->edgeTexture) != (uint32_t)f->edge.w ||
 				       gs_texture_get_height(f->edgeTexture) != (uint32_t)f->edge.h)) {
@@ -503,10 +525,10 @@ void videoRender(void *data, gs_effect_t *)
 
 	// Outline overlay params (used by every technique). Bind a valid texture
 	// even when disabled so the sampler is never unbound; edgeEnabled gates it.
-	bool edgeOn = f->edgeEnabled && f->edgeTexture;
+	bool edgeOn = f->highlight == "outline" && f->edgeTexture;
 	gs_effect_set_bool(gs_effect_get_param_by_name(f->effect, "edgeEnabled"), edgeOn);
 	struct vec4 edgeColorV;
-	vec4_from_rgba(&edgeColorV, f->edgeColor); // OBS color int is 0xAABBGGRR
+	vec4_from_rgba(&edgeColorV, f->highlightColor); // OBS color int is 0xAABBGGRR
 	gs_effect_set_vec4(gs_effect_get_param_by_name(f->effect, "edgeColor"), &edgeColorV);
 	gs_effect_set_texture(gs_effect_get_param_by_name(f->effect, "edge"),
 			      f->edgeTexture ? f->edgeTexture : f->maskTexture);
@@ -549,6 +571,41 @@ void videoRender(void *data, gs_effect_t *)
 			while (gs_effect_loop(def, "Draw"))
 				gs_draw_sprite(l.tex, 0, (uint32_t)l.w, (uint32_t)l.h);
 			gs_matrix_pop();
+		}
+		gs_blend_state_pop();
+	}
+
+	// Head boxes on top (highlight == "box"), drawn as four solid bars. All
+	// bars are drawn inside a single effect pass so the color uniform (set
+	// before the loop) is uploaded once and applies to every bar -- running a
+	// separate gs_effect_loop per bar only colors the first, since the param's
+	// "changed" flag is cleared after the first pass and later passes fall back
+	// to the solid effect's default color.
+	if (f->highlight == "box" && !f->headBoxes.empty()) {
+		gs_effect_t *solid = obs_get_base_effect(OBS_EFFECT_SOLID);
+		gs_eparam_t *colorParam = gs_effect_get_param_by_name(solid, "color");
+		struct vec4 boxColor;
+		vec4_from_rgba(&boxColor, f->highlightColor);
+		gs_effect_set_vec4(colorParam, &boxColor);
+		const float t = (float)(f->highlightThickness < 1 ? 1 : f->highlightThickness);
+		gs_blend_state_push();
+		gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
+		auto bar = [&](float x, float y, float bw, float bh) {
+			gs_matrix_push();
+			gs_matrix_translate3f(x, y, 0.0f);
+			gs_draw_sprite(nullptr, 0, (uint32_t)bw, (uint32_t)bh);
+			gs_matrix_pop();
+		};
+		while (gs_effect_loop(solid, "Solid")) {
+			for (const auto &b : f->headBoxes) {
+				float bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+				if (bw <= 0 || bh <= 0)
+					continue;
+				bar(b.x0, b.y0, bw, t);      // top
+				bar(b.x0, b.y1 - t, bw, t);  // bottom
+				bar(b.x0, b.y0, t, bh);      // left
+				bar(b.x1 - t, b.y0, t, bh);  // right
+			}
 		}
 		gs_blend_state_pop();
 	}

@@ -189,4 +189,42 @@ std::vector<Detection> PoseDetector::detect(const Image &img, const PoseConfig &
 	return result;
 }
 
+Box headSquare(const Detection &d)
+{
+	// Bounding box of the confident head keypoints (nose, eyes, ears).
+	float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
+	int n = 0;
+	for (int k = 0; k < 5; ++k) {
+		if (d.kpts[k].conf <= 0.3f)
+			continue;
+		minx = std::min(minx, d.kpts[k].x);
+		maxx = std::max(maxx, d.kpts[k].x);
+		miny = std::min(miny, d.kpts[k].y);
+		maxy = std::max(maxy, d.kpts[k].y);
+		++n;
+	}
+	float cx, cy, half;
+	if (n >= 2) {
+		// The nose/eyes/ears cluster in the upper-middle of the head, so the
+		// head center sits *below* the keypoint centroid: bias the box down so
+		// it spans crown to chin rather than cutting off the jaw.
+		cx = (minx + maxx) * 0.5f;
+		cy = (miny + maxy) * 0.5f;
+		half = std::max(maxx - minx, maxy - miny) * 1.1f;
+		cy += half * 0.25f;
+	} else {
+		// Back-facing / no visible face: size from the body box height.
+		cx = d.headX;
+		cy = d.headY;
+		half = 0.5f * 0.18f * (d.y1 - d.y0);
+	}
+	half = std::max(half, 10.f);
+	Box b;
+	b.x0 = cx - half;
+	b.y0 = cy - half;
+	b.x1 = cx + half;
+	b.y1 = cy + half;
+	return b;
+}
+
 } // namespace obm

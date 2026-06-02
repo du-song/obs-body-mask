@@ -33,4 +33,8 @@ Image bodyEdge(const Image &mask, int thickness);
 // Paints `edge` (1ch band from bodyEdge) onto `canvas` (3ch) in `color`.
 void drawEdge(Image &canvas, const Image &edge, Color color);
 
+// Draws a hollow rectangle border (`thickness` px) on `canvas` (3ch) in
+// `color`. Coordinates are in canvas pixels and are clipped to the image.
+void drawRect(Image &canvas, int x0, int y0, int x1, int y1, Color color, int thickness);
+
 } // namespace obm

@@ -58,6 +58,26 @@ void drawEdge(Image &canvas, const Image &edge, Color color)
 		}
 }
 
+void drawRect(Image &canvas, int x0, int y0, int x1, int y1, Color color, int thickness)
+{
+	if (canvas.c < 3 || thickness <= 0 || x1 <= x0 || y1 <= y0)
+		return;
+	auto fill = [&](int ax, int ay, int bx, int by) {
+		for (int y = std::max(0, ay); y < std::min(canvas.h, by); ++y)
+			for (int x = std::max(0, ax); x < std::min(canvas.w, bx); ++x) {
+				uint8_t *c = canvas.pixel(x, y);
+				c[0] = color.r;
+				c[1] = color.g;
+				c[2] = color.b;
+			}
+	};
+	const int t = thickness;
+	fill(x0, y0, x1, y0 + t);     // top
+	fill(x0, y1 - t, x1, y1);     // bottom
+	fill(x0, y0, x0 + t, y1);     // left
+	fill(x1 - t, y0, x1, y1);     // right
+}
+
 Image maskToRGB(const Image &mask)
 {
 	Image out(mask.w, mask.h, 3);

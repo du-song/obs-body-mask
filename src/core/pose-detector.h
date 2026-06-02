@@ -24,6 +24,16 @@ struct Detection {
 	float headX = 0, headY = 0; // chosen head anchor in source pixels
 };
 
+// Axis-aligned box in source pixels.
+struct Box {
+	float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+};
+
+// Square box around the head, sized from the confident head keypoints
+// (nose/eyes/ears) with a margin; falls back to a fraction of the person's
+// body box (centered on the head anchor) when the head isn't keypoint-visible.
+Box headSquare(const Detection &d);
+
 struct PoseConfig {
 	int inputSize = 640;
 	float confThreshold = 0.25f;
