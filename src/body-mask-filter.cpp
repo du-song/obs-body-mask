@@ -12,6 +12,7 @@
 #include <obs-module.h>
 #include <graphics/graphics.h>
 #include <graphics/matrix4.h>
+#include <graphics/image-file.h>
 
 #include <memory>
 #include <mutex>
@@ -80,7 +81,11 @@ struct BodyMaskFilter {
 	int inputSize = 256;
 	bool invert = false;
 	int feather = 0;
-	std::string segModel, poseModel, fontPath;
+	std::string segModel, poseModel;
+	// Bundled label font (data/fonts/overlay.ttf -> Resources/fonts/overlay.ttf).
+	// Not exposed as a setting, so it must default to the bundled file; an empty
+	// path makes obs_module_file() return null and labels never render.
+	std::string fontPath = "fonts/overlay.ttf";
 	std::string bgType = "color";
 	std::string bgImagePath;
 	uint32_t bgColor = 0xff00ff00; // ABGR-ish; see usage
@@ -326,7 +331,7 @@ obs_properties_t *getProperties(void *)
 							OBS_COMBO_TYPE_LIST,
 							OBS_COMBO_FORMAT_STRING);
 	obs_property_list_add_string(posem, "YOLO26n-pose (NMS-free)", "yolo26n-pose.onnx");
-	obs_property_list_add_string(posem, "YOLO11n-pose", "yolo11n-pose.onnx");
+	obs_property_list_add_string(posem, "YOLO11s-pose", "yolo11s-pose.onnx");
 	obs_properties_add_float_slider(p, S_POSE_CONF, obs_module_text("BodyMask.PoseConf"), 0.05,
 					0.9, 0.01);
 	obs_properties_add_int_slider(p, S_FONT_SIZE, obs_module_text("BodyMask.FontSize"), 10, 96,

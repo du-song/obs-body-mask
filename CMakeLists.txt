@@ -43,6 +43,32 @@ endif()
 # container builds with -DBUILD_PLUGIN=OFF.
 if(BUILD_PLUGIN)
   find_package(libobs QUIET)
+
+  # Local fallback (no libobs dev package): build against an already-installed
+  # OBS.app. Pass -DLIBOBS_INCLUDE_DIR=<fetched libobs headers> and optionally
+  # -DOBS_APP=<path to OBS.app> (defaults to /Applications/OBS.app). We link the
+  # framework dylib directly; its install-name is @rpath/libobs.framework/...,
+  # which binds to the libobs already loaded by OBS at runtime, so no extra
+  # rpath is needed. Use headers matching your installed OBS version.
+  if(NOT libobs_FOUND AND DEFINED LIBOBS_INCLUDE_DIR)
+    if(NOT OBS_APP)
+      set(OBS_APP "/Applications/OBS.app")
+    endif()
+    set(_libobs_dylib "${OBS_APP}/Contents/Frameworks/libobs.framework/Versions/A/libobs")
+    if(EXISTS "${LIBOBS_INCLUDE_DIR}/obs-module.h" AND EXISTS "${_libobs_dylib}")
+      message(STATUS "libobs dev package not found; building against installed OBS at ${OBS_APP}")
+      add_library(OBS::libobs SHARED IMPORTED GLOBAL)
+      set_target_properties(OBS::libobs PROPERTIES
+        IMPORTED_LOCATION "${_libobs_dylib}"
+        INTERFACE_INCLUDE_DIRECTORIES "${LIBOBS_INCLUDE_DIR}")
+      set(libobs_FOUND TRUE)
+    else()
+      message(WARNING "LIBOBS_INCLUDE_DIR/OBS_APP set but headers or framework "
+                      "not found (looked for ${LIBOBS_INCLUDE_DIR}/obs-module.h "
+                      "and ${_libobs_dylib}).")
+    endif()
+  endif()
+
   if(NOT libobs_FOUND)
     message(WARNING "libobs not found - skipping OBS plugin target. "
                     "Configure with -DBUILD_PLUGIN=OFF to silence, or use the "
@@ -60,8 +86,23 @@ if(BUILD_PLUGIN)
       set_target_properties(obs-body-mask PROPERTIES
         BUNDLE TRUE
         BUNDLE_EXTENSION "plugin"
-        INSTALL_RPATH "@loader_path/../Frameworks")
+        # Bake the install rpath into the built binary so the bundle is
+        # self-contained (resolves the bundled ONNX dylib in ../Frameworks)
+        # regardless of where the build tree lives. The OBS.app Frameworks dir
+        # is included as a belt-and-suspenders path for libobs, which otherwise
+        # binds to the already-loaded image via its @rpath install-name.
+        BUILD_WITH_INSTALL_RPATH TRUE
+        INSTALL_RPATH "@loader_path/../Frameworks;/Applications/OBS.app/Contents/Frameworks")
       include(BundleOnnxruntimeMac)
+
+      # Copy plugin data (effects, locale, models, font) into the bundle's
+      # Resources so obs_module_file() resolves them at runtime.
+      add_custom_command(TARGET obs-body-mask POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_CURRENT_SOURCE_DIR}/data"
+                "$<TARGET_BUNDLE_CONTENT_DIR:obs-body-mask>/Resources"
+        COMMENT "Bundling plugin data (effects, locale, models, font)"
+        VERBATIM)
     endif()
   endif()
 endif()

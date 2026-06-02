@@ -3,6 +3,10 @@
 /build_macos/
 /release/
 
+# Locally fetched libobs headers + SIMDe for building against an installed
+# OBS.app (see local build notes); not part of the repo.
+/.obs-sdk/
+
 # Fetched models / fonts (large binaries; see scripts/fetch-models.sh)
 /data/models/*.onnx
 /data/fonts/*.ttf
