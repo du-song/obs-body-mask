@@ -18,6 +18,43 @@ is silhouette-based and head detection uses pose keypoints, not faces) and for
 **~20 people at once** (segmentation is count-agnostic; pose is single-shot
 multi-person).
 
+## Install
+
+### macOS (Apple Silicon) — prebuilt plugin
+
+Grab `obs-body-mask.plugin.zip` from the
+[latest release](https://github.com/du-song/obs-body-mask/releases/latest) and
+unpack it into the OBS user plugin directory:
+
+```bash
+cd ~/Downloads
+unzip obs-body-mask.plugin.zip -d obs-body-mask-release
+
+PLUGINS=~/Library/Application\ Support/obs-studio/plugins
+mkdir -p "$PLUGINS"
+rm -rf "$PLUGINS/obs-body-mask.plugin"
+cp -R obs-body-mask-release/obs-body-mask.plugin "$PLUGINS/"
+
+# The bundle is ad-hoc signed, so clear the download quarantine flag —
+# otherwise Gatekeeper blocks the bundled ONNX Runtime dylib and OBS
+# silently skips the plugin.
+xattr -dr com.apple.quarantine "$PLUGINS/obs-body-mask.plugin"
+```
+
+Restart OBS, then select a source → **Filters → + → Body Segmentation Mask**.
+
+The bundle is self-contained — ONNX Runtime, all four models
+(`selfie_segmentation`, `pphumanseg`, `yolo26n-pose`, `yolo11s-pose`), the
+overlay font and the effect all live inside the `.plugin`, so
+`scripts/fetch-models.sh` is not needed for the release build.
+
+Requires Apple Silicon and OBS Studio 31+ (tested on 32.2). If the filter does
+not appear, check the load result in the OBS log:
+
+```bash
+grep -i body-mask ~/Library/Application\ Support/obs-studio/logs/*.txt | tail
+```
+
 ## Architecture
 
 A platform-agnostic, OBS-free **shared core** (`src/core`, `src/ort-utils`) does
@@ -33,7 +70,7 @@ all model work and is reused by two front-ends:
 The core depends only on **ONNX Runtime** plus vendored header-only libraries
 (`stb_image`, `stb_image_write`, `stb_truetype`) — no OpenCV.
 
-## Build
+## Build from source
 
 ### 1. Fetch models + font (once)
 
