@@ -25,6 +25,23 @@ TextRaster::TextRaster(const std::string &fontPath)
 	fclose(f);
 }
 
+std::string formatLabel(const std::string &format, int number)
+{
+	const std::string num = std::to_string(number);
+	std::string out;
+	out.reserve(format.size() + num.size());
+	for (size_t i = 0; i < format.size();) {
+		if (format[i] != '#') {
+			out += format[i++];
+			continue;
+		}
+		while (i < format.size() && format[i] == '#') // collapse the whole run
+			++i;
+		out += num;
+	}
+	return out;
+}
+
 Image TextRaster::render(const std::string &text, float pxHeight, Color color) const
 {
 	if (font_.empty() || text.empty())

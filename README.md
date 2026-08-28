@@ -9,9 +9,12 @@ offers three output modes:
 2. **Background Replace** — keeps people, replaces the non-human background with
    an **image** or **solid color**, with a slider for the **% of the original**
    to blend back through.
-3. **Head Text Overlay** — draws an auto-numbered label (`Person 1`, `Person 2`,
-   …) on each detected head, using a multi-person **pose** model (YOLO26-pose by
-   default; the older YOLOv8/11 `[1,56,8400]` layout is also supported).
+3. **Head Text Overlay** — draws an auto-numbered label on each detected head,
+   using a multi-person **pose** model (YOLO26-pose by default; the older
+   YOLOv8/11 `[1,56,8400]` layout is also supported). The label text is a
+   template where `###` expands to the person's tracked number — the default
+   `Person ###` renders as `Person 1`, `Person 2`, … (`Person 123` for the
+   123rd person); a template without `###` is drawn verbatim on every head.
 
 Designed for the hard cases: it works for **back-facing** people (segmentation
 is silhouette-based and head detection uses pose keypoints, not faces) and for
@@ -86,7 +89,8 @@ cmake --build build
 ./build/body-mask-cli --mode mask       --input people.jpg --output mask.png       --model data/models/selfie_segmentation.onnx
 ./build/body-mask-cli --mode background  --input people.jpg --bg-color FF0000 --original-blend 20 --output bg.png --model data/models/selfie_segmentation.onnx
 ./build/body-mask-cli --mode overlay     --input people.jpg --output labels.png \
-    --pose-model data/models/yolo26n-pose.onnx --font data/fonts/overlay.ttf
+    --pose-model data/models/yolo26n-pose.onnx --font data/fonts/overlay.ttf \
+    --label-format 'Person ###'
 ```
 
 ### 2b. OBS plugin (macOS, Apple Silicon)

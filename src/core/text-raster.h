@@ -14,6 +14,11 @@ struct Color {
 	uint8_t r = 255, g = 255, b = 255;
 };
 
+// Expands a label template for one person: every run of '#' is replaced by
+// `number` (so "Person ###" -> "Person 7"). A template without '#' is returned
+// unchanged, which makes every label identical -- the caller's choice.
+std::string formatLabel(const std::string &format, int number);
+
 class TextRaster {
 public:
 	// Loads a TTF from disk. ok() is false if the font could not be read.

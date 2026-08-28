@@ -39,6 +39,7 @@
 #define S_OVERLAY "overlay_enabled"
 #define S_POSE_MODEL "pose_model"
 #define S_POSE_CONF "pose_conf"
+#define S_LABEL_FMT "label_format"     // "###" expands to the person number
 #define S_FONT_SIZE "font_size"
 #define S_TEXT_COLOR "text_color"
 #define S_VOFFSET "v_offset"
@@ -97,6 +98,7 @@ struct BodyMaskFilter {
 	float origBlend = 0.f;
 	bool overlay = false;
 	float poseConf = 0.25f;
+	std::string labelFormat = "Person ###";
 	int fontSize = 28;
 	uint32_t textColor = 0xff00e6ff;
 	int vOffset = 6;
@@ -205,6 +207,7 @@ void updateSettings(void *data, obs_data_t *s)
 	f->overlay = newOverlay;
 	f->poseModel = newPose;
 	f->poseConf = (float)obs_data_get_double(s, S_POSE_CONF);
+	f->labelFormat = obs_data_get_string(s, S_LABEL_FMT);
 	f->fontSize = (int)obs_data_get_int(s, S_FONT_SIZE);
 	f->textColor = (uint32_t)obs_data_get_int(s, S_TEXT_COLOR);
 	f->vOffset = (int)obs_data_get_int(s, S_VOFFSET);
@@ -277,6 +280,7 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_bool(s, S_OVERLAY, false);
 	obs_data_set_default_string(s, S_POSE_MODEL, "yolo26n-pose.onnx");
 	obs_data_set_default_double(s, S_POSE_CONF, 0.25);
+	obs_data_set_default_string(s, S_LABEL_FMT, "Person ###");
 	obs_data_set_default_int(s, S_FONT_SIZE, 28);
 	obs_data_set_default_int(s, S_TEXT_COLOR, 0xff00e6ff);
 	obs_data_set_default_int(s, S_VOFFSET, 6);
@@ -311,7 +315,8 @@ bool syncVisibility(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 	};
 	vis(S_POSE_MODEL, overlay || box);
 	vis(S_POSE_CONF, overlay || box);
-	for (const char *k : {S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET, S_TRACK_IOU, S_TRACK_MISS})
+	for (const char *k :
+	     {S_LABEL_FMT, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET, S_TRACK_IOU, S_TRACK_MISS})
 		vis(k, overlay);
 	for (const char *k : {S_HL_COLOR, S_HL_THICK})
 		vis(k, hl != "off");
@@ -378,6 +383,8 @@ obs_properties_t *getProperties(void *)
 	obs_property_list_add_string(posem, "YOLO11s-pose", "yolo11s-pose.onnx");
 	obs_properties_add_float_slider(p, S_POSE_CONF, obs_module_text("BodyMask.PoseConf"), 0.05,
 					0.9, 0.01);
+	obs_properties_add_text(p, S_LABEL_FMT, obs_module_text("BodyMask.LabelText"),
+				OBS_TEXT_DEFAULT);
 	obs_properties_add_int_slider(p, S_FONT_SIZE, obs_module_text("BodyMask.FontSize"), 10, 96,
 				      1);
 	obs_properties_add_color(p, S_TEXT_COLOR, obs_module_text("BodyMask.TextColor"));
@@ -411,7 +418,7 @@ void buildLabelSprites(BodyMaskFilter *f, const std::vector<Detection> &dets,
 		  (uint8_t)((f->textColor >> 16) & 0xff)};
 	for (size_t i = 0; i < dets.size(); ++i) {
 		const auto &d = dets[i];
-		Image rgba = f->textRaster->render("Person " + std::to_string(ids[i]),
+		Image rgba = f->textRaster->render(formatLabel(f->labelFormat, ids[i]),
 						   (float)f->fontSize, col);
 		if (rgba.empty())
 			continue;

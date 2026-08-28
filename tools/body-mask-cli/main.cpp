@@ -46,6 +46,8 @@ static void usage()
 		"  --pose-model FILE     pose onnx (default models/yolo26n-pose.onnx)\n"
 		"  --font FILE           ttf for labels (default fonts/overlay.ttf)\n"
 		"  --font-size N         label pixel height (default 28)\n"
+		"  --label-format TEXT   label template, ### = person number\n"
+		"                        (default \"Person ###\")\n"
 		"  --highlight off|outline|box  highlight detected bodies (default off)\n"
 		"  --highlight-color RRGGBB     highlight color (default FF0000)\n"
 		"  --highlight-thickness N      outline/box line width in px (default 3)\n"
@@ -147,8 +149,8 @@ int main(int argc, char **argv)
 		PoseTracker tracker; // persistent IDs (stable across frames in video use)
 		auto ids = tracker.update(dets);
 		for (size_t i = 0; i < dets.size(); ++i) {
-			Image label = tr.render("Person " + std::to_string(ids[i]), fontSize,
-						 Color{255, 230, 0});
+			Image label = tr.render(formatLabel(get("label-format", "Person ###"), ids[i]),
+						fontSize, Color{255, 230, 0});
 			drawLabel(canvas, label, (int)dets[i].headX, (int)dets[i].headY - 4);
 		}
 		if (!savePNG(output, canvas))

@@ -33,8 +33,11 @@ if(BUILD_CLI)
 
   add_executable(track-test tests/track_test.cpp)
   target_link_libraries(track-test PRIVATE body-segmenter-core)
+  add_executable(label-format-test tests/label_format_test.cpp)
+  target_link_libraries(label-format-test PRIVATE body-segmenter-core)
   enable_testing()
   add_test(NAME tracker COMMAND track-test)
+  add_test(NAME label_format COMMAND label-format-test)
 endif()
 
 # --- OBS plugin -----------------------------------------------------------
