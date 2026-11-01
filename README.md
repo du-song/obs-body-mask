@@ -25,6 +25,24 @@ multi-person).
 
 ### macOS (Apple Silicon) — prebuilt plugin
 
+Quit OBS, then run in Terminal:
+
+```bash
+curl -fsSL https://github.com/du-song/obs-body-mask/releases/latest/download/install-obs-body-mask.sh | bash
+```
+
+The script ([`scripts/install-macos.sh`](scripts/install-macos.sh)) checks for
+Apple Silicon and OBS 33+, downloads `obs-body-mask.plugin.zip` from the
+latest release, verifies its SHA-256 and signature, and installs it into the
+OBS user plugin directory. It does not use sudo. To install a specific
+release:
+
+```bash
+curl -fsSL https://github.com/du-song/obs-body-mask/releases/latest/download/install-obs-body-mask.sh | bash -s -- --version v0.3
+```
+
+#### Manual install
+
 Grab `obs-body-mask.plugin.zip` from the
 [latest release](https://github.com/du-song/obs-body-mask/releases/latest) and
 unpack it into the OBS user plugin directory:
