@@ -51,7 +51,7 @@ The bundle is self-contained — ONNX Runtime, all four models
 overlay font and the effect all live inside the `.plugin`, so
 `scripts/fetch-models.sh` is not needed for the release build.
 
-Requires Apple Silicon and OBS Studio 31+ (tested on 32.2). If the filter does
+Requires Apple Silicon and OBS Studio 33+ (tested on 33.0.1). If the filter does
 not appear, check the load result in the OBS log:
 
 ```bash
@@ -115,7 +115,7 @@ Then in OBS: select a source → **Filters → + → Body Segmentation Mask**.
 
 - ✅ Shared core + CLI: built and verified on Linux against real models
   (segmentation mask, background replace + blend, multi-person head labels).
-- ⏳ OBS plugin layer: written against the OBS 31 API; **must be built and tested
+- ⏳ OBS plugin layer: written against the OBS 33 API; **must be built and tested
   on a Mac** (cannot be compiled in a Linux-only environment).
 
 ## License

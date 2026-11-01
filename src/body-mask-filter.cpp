@@ -71,7 +71,7 @@ struct BodyMaskFilter {
 	gs_texture_t *edgeTexture = nullptr;
 	gs_texture_t *solidTexture = nullptr;
 
-	gs_image_file_t bgImage{};
+	gs_image_file_ex_t bgImage{};
 	bool bgImageLoaded = false;
 
 	Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "obs-body-mask"};
@@ -160,12 +160,12 @@ void loadBackgroundImage(BodyMaskFilter *f)
 		return;
 	obs_enter_graphics();
 	if (f->bgImageLoaded) {
-		gs_image_file_free(&f->bgImage);
+		gs_image_file_ex_free(&f->bgImage);
 		f->bgImageLoaded = false;
 	}
 	if (f->bgType == "image" && !f->bgImagePath.empty()) {
-		gs_image_file_init(&f->bgImage, f->bgImagePath.c_str());
-		gs_image_file_init_texture(&f->bgImage);
+		gs_image_file_ex_init(&f->bgImage, f->bgImagePath.c_str(), GS_IMAGE_ALPHA_STRAIGHT);
+		gs_image_file_ex_init_texture(&f->bgImage);
 		f->bgImageLoaded = f->bgImage.texture != nullptr;
 	}
 	obs_leave_graphics();
@@ -258,7 +258,7 @@ void destroyFilter(void *data)
 	if (f->effect)
 		gs_effect_destroy(f->effect);
 	if (f->bgImageLoaded)
-		gs_image_file_free(&f->bgImage);
+		gs_image_file_ex_free(&f->bgImage);
 	for (auto &l : f->labels)
 		if (l.tex)
 			gs_texture_destroy(l.tex);

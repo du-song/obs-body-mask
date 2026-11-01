@@ -1,7 +1,7 @@
 {
     "dependencies": {
         "obs-studio": {
-            "version": "31.0.0",
+            "version": "33.0.1",
             "baseUrl": "https://github.com/obsproject/obs-studio/archive/refs/tags",
             "label": "OBS Studio",
             "hashes": {
@@ -9,7 +9,7 @@
             }
         },
         "prebuilt": {
-            "version": "2024-09-12",
+            "version": "2026-10-23",
             "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
             "label": "Pre-Built obs-deps",
             "hashes": {

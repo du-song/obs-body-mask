@@ -14,7 +14,7 @@
             "generator": "Xcode",
             "cacheVariables": {
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
-                "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+                "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
                 "BUILD_PLUGIN": true,
                 "BUILD_CLI": true,
                 "CMAKE_BUILD_TYPE": "RelWithDebInfo"

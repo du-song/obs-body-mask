@@ -16,12 +16,12 @@ on:
   workflow_dispatch:
 
 env:
-  OBS_VERSION: "31.0.0"
-  DEPS_VERSION: "2024-09-12"
+  OBS_VERSION: "33.0.1"
+  DEPS_VERSION: "2026-10-23"
 
 jobs:
   macos:
-    runs-on: macos-14 # Apple Silicon
+    runs-on: macos-26 # Apple Silicon
     steps:
       - name: Checkout plugin
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
           path: plugin
 
       - name: Select latest-stable Xcode
-        # OBS 31 requires the macOS 14.2 SDK (Xcode 15.1+); the runner default
+        # OBS 33 requires the macOS 26.5 SDK (Xcode 26.5+); the runner default
         # may be older, which makes OBS's CMake report an empty/too-low SDK.
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -38,10 +38,10 @@ jobs:
       - name: Install build tools
         run: brew install cmake ninja
 
-      - name: Fetch prebuilt obs-deps (arm64)
+      - name: Fetch prebuilt obs-deps (universal)
         run: |
           set -eux
-          url="https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-arm64.tar.xz"
+          url="https://github.com/obsproject/obs-deps/releases/download/${DEPS_VERSION}/macos-deps-${DEPS_VERSION}-universal.tar.xz"
           curl -fSL -o deps.tar.xz "$url"
           mkdir -p "$RUNNER_TEMP/obs-deps"
           tar -xf deps.tar.xz -C "$RUNNER_TEMP/obs-deps"
@@ -65,10 +65,10 @@ jobs:
           cmake -S obs-studio -B obs-build -G Xcode \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT="$SYSROOT" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/obs-deps" \
             -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/obs-install" \
-            -DENABLE_UI=OFF -DENABLE_BROWSER=OFF -DENABLE_SCRIPTING=OFF \
+            -DENABLE_FRONTEND=OFF -DENABLE_BROWSER=OFF -DENABLE_SCRIPTING=OFF \
             -DENABLE_PLUGINS=OFF
           cmake --build obs-build --target libobs --config RelWithDebInfo
           cmake --install obs-build --config RelWithDebInfo --component Development \
@@ -80,7 +80,7 @@ jobs:
           cmake -S plugin -B plugin/build_macos -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
             -DBUILD_PLUGIN=ON -DBUILD_CLI=ON \
             -DCMAKE_PREFIX_PATH="$RUNNER_TEMP/obs-install;$RUNNER_TEMP/obs-deps"
 
