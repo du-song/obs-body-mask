@@ -1,6 +1,7 @@
 # Build output
 /build/
 /build_macos/
+/build_local/
 /release/
 
 # Locally fetched libobs headers + SIMDe for building against an installed

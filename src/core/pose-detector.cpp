@@ -191,11 +191,19 @@ std::vector<Detection> PoseDetector::detect(const Image &img, const PoseConfig &
 
 Box headSquare(const Detection &d)
 {
-	// Bounding box of the confident head keypoints (nose, eyes, ears).
+	bool use[5];
+	for (int k = 0; k < 5; ++k)
+		use[k] = d.kpts[k].conf > 0.3f;
+	return headSquare(d, use);
+}
+
+Box headSquare(const Detection &d, const bool use[5])
+{
+	// Bounding box of the selected head keypoints (nose, eyes, ears).
 	float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
 	int n = 0;
 	for (int k = 0; k < 5; ++k) {
-		if (d.kpts[k].conf <= 0.3f)
+		if (!use[k])
 			continue;
 		minx = std::min(minx, d.kpts[k].x);
 		maxx = std::max(maxx, d.kpts[k].x);

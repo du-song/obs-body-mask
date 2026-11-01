@@ -13,6 +13,7 @@
 #include <graphics/graphics.h>
 #include <graphics/matrix4.h>
 #include <graphics/image-file.h>
+#include <util/platform.h>
 
 #include <memory>
 #include <mutex>
@@ -23,6 +24,7 @@
 #include "core/body-segmenter.h"
 #include "core/pose-detector.h"
 #include "core/pose-tracker.h"
+#include "core/box-smoother.h"
 #include "core/text-raster.h"
 #include "core/compositor.h"
 
@@ -50,6 +52,7 @@
 #define S_HIGHLIGHT "highlight"             // "off" | "outline" | "box"
 #define S_HL_COLOR "highlight_color"
 #define S_HL_THICK "highlight_thickness"
+#define S_HL_SMOOTH "highlight_smoothing" // box mode: 0 = off .. 100 = max
 
 using namespace obm;
 
@@ -78,6 +81,7 @@ struct BodyMaskFilter {
 	std::unique_ptr<BodySegmenter> seg;
 	std::unique_ptr<PoseDetector> pose;
 	PoseTracker tracker; // persistent "Person N" IDs across frames
+	HeadBoxSmoother boxSmoother; // per-person temporal smoothing (box mode)
 	std::unique_ptr<TextRaster> textRaster;
 	std::mutex modelMutex;
 
@@ -109,6 +113,7 @@ struct BodyMaskFilter {
 	std::string highlight = "off";        // "off" | "outline" | "box"
 	uint32_t highlightColor = 0xff0000ff; // OBS 0xAABBGGRR; default opaque red
 	int highlightThickness = 3;           // outline/box line width in px
+	int highlightSmoothing = 50;          // box mode: 0 = raw .. 100 = max
 
 	int frameCounter = 0;
 	Image mask;                       // latest binary mask (w*h, 1ch)
@@ -218,6 +223,7 @@ void updateSettings(void *data, obs_data_t *s)
 	f->highlight = newHighlight;
 	f->highlightColor = (uint32_t)obs_data_get_int(s, S_HL_COLOR);
 	f->highlightThickness = (int)obs_data_get_int(s, S_HL_THICK);
+	f->highlightSmoothing = (int)obs_data_get_int(s, S_HL_SMOOTH);
 
 	rebuildModels(f);
 	loadBackgroundImage(f);
@@ -291,6 +297,7 @@ void getDefaults(obs_data_t *s)
 	obs_data_set_default_string(s, S_HIGHLIGHT, "off");
 	obs_data_set_default_int(s, S_HL_COLOR, 0xff0000ff); // opaque red (0xAABBGGRR)
 	obs_data_set_default_int(s, S_HL_THICK, 3);
+	obs_data_set_default_int(s, S_HL_SMOOTH, 50);
 }
 
 bool modeChanged(obs_properties_t *props, obs_property_t *, obs_data_t *s)
@@ -315,11 +322,14 @@ bool syncVisibility(obs_properties_t *props, obs_property_t *, obs_data_t *s)
 	};
 	vis(S_POSE_MODEL, overlay || box);
 	vis(S_POSE_CONF, overlay || box);
-	for (const char *k :
-	     {S_LABEL_FMT, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET, S_TRACK_IOU, S_TRACK_MISS})
+	for (const char *k : {S_LABEL_FMT, S_FONT_SIZE, S_TEXT_COLOR, S_VOFFSET})
 		vis(k, overlay);
+	// The tracker also drives box smoothing and hold-on-miss.
+	vis(S_TRACK_IOU, overlay || box);
+	vis(S_TRACK_MISS, overlay || box);
 	for (const char *k : {S_HL_COLOR, S_HL_THICK})
 		vis(k, hl != "off");
+	vis(S_HL_SMOOTH, box);
 	return true;
 }
 
@@ -354,6 +364,8 @@ obs_properties_t *getProperties(void *)
 	obs_properties_add_color(p, S_HL_COLOR, obs_module_text("BodyMask.HighlightColor"));
 	obs_properties_add_int_slider(p, S_HL_THICK, obs_module_text("BodyMask.HighlightThickness"), 1,
 				      32, 1);
+	obs_properties_add_int_slider(p, S_HL_SMOOTH, obs_module_text("BodyMask.HighlightSmoothing"),
+				      0, 100, 1);
 
 	obs_property_t *segm = obs_properties_add_list(p, S_SEG_MODEL,
 						       obs_module_text("BodyMask.SegModel"),
@@ -453,16 +465,24 @@ void runInference(BodyMaskFilter *f, const Image &frameBGRA)
 		PoseConfig pc;
 		pc.confThreshold = f->poseConf;
 		auto dets = f->pose->detect(frameBGRA, pc, /*bgr=*/true);
-		if (f->overlay) {
-			auto ids = f->tracker.update(dets, f->trackIou, f->trackMiss);
+		// One tracker update per inference step serves both the labels and
+		// the box smoother (persistent IDs = per-person smoothing state).
+		auto ids = f->tracker.update(dets, f->trackIou, f->trackMiss);
+		if (f->overlay)
 			buildLabelSprites(f, dets, ids);
+		if (box) {
+			BoxSmootherConfig bc;
+			bc.smoothing = (float)f->highlightSmoothing / 100.f;
+			bc.holdFrames = f->trackMiss;
+			f->headBoxes = f->boxSmoother.update(dets, ids, (double)os_gettime_ns() / 1e9,
+							     bc);
+		} else {
+			f->headBoxes.clear();
+			f->boxSmoother.reset();
 		}
-		f->headBoxes.clear();
-		if (box)
-			for (const auto &d : dets)
-				f->headBoxes.push_back(headSquare(d));
 	} else {
 		f->headBoxes.clear();
+		f->boxSmoother.reset();
 	}
 }
 

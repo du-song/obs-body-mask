@@ -33,6 +33,9 @@ struct Box {
 // (nose/eyes/ears) with a margin; falls back to a fraction of the person's
 // body box (centered on the head anchor) when the head isn't keypoint-visible.
 Box headSquare(const Detection &d);
+// Same, but only the head keypoints (0..4) with use[k] == true count. Used by
+// the box smoother, which picks keypoints with confidence hysteresis.
+Box headSquare(const Detection &d, const bool use[5]);
 
 struct PoseConfig {
 	int inputSize = 640;

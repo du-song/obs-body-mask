@@ -20,6 +20,7 @@ add_library(body-segmenter-core STATIC
   src/core/body-segmenter.cpp
   src/core/pose-detector.cpp
   src/core/pose-tracker.cpp
+  src/core/box-smoother.cpp
   src/core/compositor.cpp
   src/core/text-raster.cpp
   src/core/image-io.cpp)
@@ -38,6 +39,9 @@ if(BUILD_CLI)
   enable_testing()
   add_test(NAME tracker COMMAND track-test)
   add_test(NAME label_format COMMAND label-format-test)
+  add_executable(box-smooth-test tests/box_smooth_test.cpp)
+  target_link_libraries(box-smooth-test PRIVATE body-segmenter-core)
+  add_test(NAME box_smooth COMMAND box-smooth-test)
 endif()
 
 # --- OBS plugin -----------------------------------------------------------
